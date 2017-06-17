@@ -25,6 +25,7 @@ class TestBucketWithVersions(unittest.TestCase):
     def setUp(self):
         self.session = botocore.session.get_session()
         self.client = self.session.create_client('s3', region_name='us-west-2')
+        self.addCleanup(self.client.close)
         self.bucket_name = 'botocoretest%s' % random_chars(50)
 
     def extract_version_ids(self, versions):
@@ -91,11 +92,11 @@ class TestResponseLog(unittest.TestCase):
         # we can refactor the code however we want, as long as we don't
         # lose this feature.
         session = botocore.session.get_session()
-        client = session.create_client('s3', region_name='us-west-2')
-        debug_log = six.StringIO()
-        session.set_stream_logger('', logging.DEBUG, debug_log)
-        client.list_buckets()
-        debug_log_contents = debug_log.getvalue()
+        with session.create_client('s3', region_name='us-west-2') as client:
+            debug_log = six.StringIO()
+            session.set_stream_logger('', logging.DEBUG, debug_log)
+            client.list_buckets()
+            debug_log_contents = debug_log.getvalue()
         self.assertIn('Response headers', debug_log_contents)
         self.assertIn('Response body', debug_log_contents)
 
@@ -104,6 +105,7 @@ class TestAcceptedDateTimeFormats(unittest.TestCase):
     def setUp(self):
         self.session = botocore.session.get_session()
         self.client = self.session.create_client('emr', 'us-west-2')
+        self.addCleanup(self.client.close)
 
     def test_accepts_datetime_object(self):
         response = self.client.list_clusters(
@@ -136,10 +138,10 @@ class TestCreateClients(unittest.TestCase):
 
     def test_client_can_clone_with_service_events(self):
         # We should also be able to create a client object.
-        client = self.session.create_client('s3', region_name='us-west-2')
-        # We really just want to ensure create_client doesn't raise
-        # an exception, but we'll double check that the client looks right.
-        self.assertTrue(hasattr(client, 'list_buckets'))
+        with self.session.create_client('s3', region_name='us-west-2') as client:
+            # We really just want to ensure create_client doesn't raise an
+            # exception, but we'll double check that the client looks right.
+            self.assertTrue(hasattr(client, 'list_buckets'))
 
     def test_client_raises_exception_invalid_region(self):
         with self.assertRaisesRegexp(ValueError, ('Invalid endpoint')):
@@ -152,39 +154,39 @@ class TestClientErrors(unittest.TestCase):
         self.session = botocore.session.get_session()
 
     def test_region_mentioned_in_invalid_region(self):
-        client = self.session.create_client(
-            'cloudformation', region_name='us-east-999')
-        with self.assertRaisesRegexp(EndpointConnectionError,
-                                     'Could not connect to the endpoint URL'):
-            client.list_stacks()
+        with self.session.create_client(
+                'cloudformation', region_name='us-east-999') as client:
+            with self.assertRaisesRegexp(EndpointConnectionError,
+                                         'Could not connect to the endpoint URL'):
+                client.list_stacks()
 
     def test_client_modeled_exception(self):
-        client = self.session.create_client(
-            'dynamodb', region_name='us-west-2')
-        with self.assertRaises(client.exceptions.ResourceNotFoundException):
-            client.describe_table(TableName="NonexistentTable")
+        with self.session.create_client(
+                'dynamodb', region_name='us-west-2') as client:
+            with self.assertRaises(client.exceptions.ResourceNotFoundException):
+                client.describe_table(TableName="NonexistentTable")
 
     def test_client_modeleded_exception_with_differing_code(self):
-        client = self.session.create_client('iam', region_name='us-west-2')
-        # The NoSuchEntityException should be raised on NoSuchEntity error
-        # code.
-        with self.assertRaises(client.exceptions.NoSuchEntityException):
-            client.get_role(RoleName="NonexistentIAMRole")
+        with self.session.create_client('iam', region_name='us-west-2') as client:
+            # The NoSuchEntityException should be raised on NoSuchEntity error
+            # code.
+            with self.assertRaises(client.exceptions.NoSuchEntityException):
+                client.get_role(RoleName="NonexistentIAMRole")
 
     def test_raises_general_client_error_for_non_modeled_exception(self):
-        client = self.session.create_client('ec2', region_name='us-west-2')
-        try:
-            client.describe_regions(DryRun=True)
-        except client.exceptions.ClientError as e:
-            self.assertIs(e.__class__, ClientError)
+        with self.session.create_client('ec2', region_name='us-west-2') as client:
+            try:
+                client.describe_regions(DryRun=True)
+            except client.exceptions.ClientError as e:
+                self.assertIs(e.__class__, ClientError)
 
     def test_can_catch_client_exceptions_across_two_different_clients(self):
-        client = self.session.create_client(
-            'dynamodb', region_name='us-west-2')
-        client2 = self.session.create_client(
-            'dynamodb', region_name='us-west-2')
-        with self.assertRaises(client2.exceptions.ResourceNotFoundException):
-            client.describe_table(TableName="NonexistentTable")
+        with self.session.create_client(
+                'dynamodb', region_name='us-west-2') as client:
+            with self.session.create_client(
+                    'dynamodb', region_name='us-west-2') as client2:
+                with self.assertRaises(client2.exceptions.ResourceNotFoundException):
+                    client.describe_table(TableName="NonexistentTable")
 
 
 class TestClientMeta(unittest.TestCase):
@@ -192,13 +194,13 @@ class TestClientMeta(unittest.TestCase):
         self.session = botocore.session.get_session()
 
     def test_region_name_on_meta(self):
-        client = self.session.create_client('s3', 'us-west-2')
-        self.assertEqual(client.meta.region_name, 'us-west-2')
+        with self.session.create_client('s3', 'us-west-2') as client:
+            self.assertEqual(client.meta.region_name, 'us-west-2')
 
     def test_endpoint_url_on_meta(self):
-        client = self.session.create_client('s3', 'us-west-2',
-                                            endpoint_url='https://foo')
-        self.assertEqual(client.meta.endpoint_url, 'https://foo')
+        with self.session.create_client('s3', 'us-west-2',
+                                        endpoint_url='https://foo') as client:
+            self.assertEqual(client.meta.endpoint_url, 'https://foo')
 
 
 class TestClientInjection(unittest.TestCase):
@@ -216,7 +218,6 @@ class TestClientInjection(unittest.TestCase):
         self.session.register('creating-client-class.s3',
                               inject_client_method)
 
-        client = self.session.create_client('s3', 'us-west-2')
-
-        # We should now have access to the extra_client_method above.
-        self.assertEqual(client.extra_client_method('foo'), 'foo')
+        with self.session.create_client('s3', 'us-west-2') as client:
+            # We should now have access to the extra_client_method above.
+            self.assertEqual(client.extra_client_method('foo'), 'foo')

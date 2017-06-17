@@ -24,6 +24,7 @@ class TestEC2(unittest.TestCase):
         self.session = botocore.session.get_session()
         self.client = self.session.create_client(
             'ec2', region_name='us-west-2')
+        self.addCleanup(self.client.close)
 
     def test_can_make_request(self):
         # Basic smoke test to ensure we can talk to ec2.
@@ -44,6 +45,7 @@ class TestEC2Pagination(unittest.TestCase):
         self.session = botocore.session.get_session()
         self.client = self.session.create_client(
             'ec2', region_name='us-west-2')
+        self.addCleanup(self.client.close)
 
     def test_can_paginate(self):
         # Using an operation that we know will paginate.
@@ -88,8 +90,10 @@ class TestCopySnapshotCustomization(unittest.TestCase):
         # However, all the test fixture setup/cleanup can use
         # the client interface.
         self.client = self.session.create_client('ec2', 'us-west-2')
+        self.addCleanup(self.client.close)
         self.client_us_east_1 = self.session.create_client(
             'ec2', 'us-east-1')
+        self.addCleanup(self.client_us_east_1.close)
 
     def create_volume(self, encrypted=False):
         available_zones = self.client.describe_availability_zones()
@@ -110,11 +114,12 @@ class TestCopySnapshotCustomization(unittest.TestCase):
         return snapshot_id
 
     def cleanup_copied_snapshot(self, snapshot_id):
-        dest_client = self.session.create_client('ec2', 'us-east-1')
-        self.addCleanup(dest_client.delete_snapshot,
-                        SnapshotId=snapshot_id)
-        dest_client.get_waiter('snapshot_completed').wait(
-            SnapshotIds=[snapshot_id])
+        with self.session.create_client('ec2', 'us-east-1') as dest_client:
+            try:
+                dest_client.get_waiter('snapshot_completed').wait(
+                    SnapshotIds=[snapshot_id])
+            finally:
+                dest_client.delete_snapshot(SnapshotId=snapshot_id)
 
     def test_can_copy_snapshot(self):
         volume_id = self.create_volume()

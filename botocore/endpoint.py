@@ -132,6 +132,9 @@ class Endpoint(object):
             response_parser_factory = parsers.ResponseParserFactory()
         self._response_parser_factory = response_parser_factory
 
+    def close(self):
+        self.http_session.close()
+
     def __repr__(self):
         return '%s(%s)' % (self._endpoint_prefix, self.host)
 

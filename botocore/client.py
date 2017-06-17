@@ -519,6 +519,15 @@ class BaseClient(object):
     def _service_model(self):
         return self.meta.service_model
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        self._endpoint.close()
+
     def _make_api_call(self, operation_name, api_params):
         operation_model = self._service_model.operation_model(operation_name)
         request_context = {

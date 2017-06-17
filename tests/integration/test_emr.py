@@ -32,9 +32,9 @@ def test_emr_endpoints_work_with_py26():
 
 
 def _test_can_list_clusters_in_region(session, region):
-    client = session.create_client('emr', region_name=region)
-    response = client.list_clusters()
-    assert_true('Clusters' in response)
+    with session.create_client('emr', region_name=region) as client:
+        response = client.list_clusters()
+        assert_true('Clusters' in response)
 
 
 # I consider these integration tests because they're
@@ -44,6 +44,7 @@ class TestEMRGetExtraResources(unittest.TestCase):
     def setUp(self):
         self.session = botocore.session.get_session()
         self.client = self.session.create_client('emr', 'us-west-2')
+        self.addCleanup(self.client.close)
 
     def test_can_access_pagination_configs(self):
         # Using an operation that we know will paginate.
